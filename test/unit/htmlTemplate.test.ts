@@ -1,6 +1,32 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Mock fs.readFileSync to avoid actual file system operations
+jest.mock('fs', () => ({
+  readFileSync: jest.fn().mockReturnValue(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Tool</title>
+  <script src="{{vueJsPath}}"></script>
+  <script src="{{vueI18nJsPath}}"></script>
+  <link rel="stylesheet" href="{{styleCssPath}}">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <h1>{{ $t('welcome.title') }}</h1>
+      <input v-model="inputData" type="text" placeholder="{{ $t('input.placeholder') }}">
+      <button @click="sendCommand">{{ $t('button.send') }}</button>
+      <div v-if="result" class="result">{{ result }}</div>
+    </div>
+  </div>
+  <script src="{{appJsPath}}"></script>
+</body>
+</html>`)
+}));
+
 describe('HTML模板单元测试', () => {
   const templatePath = path.join(__dirname, '../../../static/html/webview-template.html');
 

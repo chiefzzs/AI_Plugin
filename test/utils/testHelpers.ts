@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import { jest } from '@jest/globals';
 
 /**
  * 测试辅助工具类，提供HTML模板测试和其他测试场景的通用辅助函数
@@ -212,8 +214,34 @@ export class MockWebview {
  */
 export class MockWebviewPanel {
   webview: MockWebview;
+  private disposables: vscode.Disposable[] = [];
   
   constructor() {
     this.webview = new MockWebview();
+  }
+  
+  reveal(column?: vscode.ViewColumn, preserveFocus?: boolean): void {
+    // 模拟reveal方法
+  }
+  
+  onDidDispose(callback: () => any, thisArg?: any, disposables?: vscode.Disposable[]): vscode.Disposable {
+    // 模拟onDidDispose方法
+    const disposable = { dispose: () => {} };
+    
+    if (disposables) {
+      disposables.push(disposable);
+    } else {
+      this.disposables.push(disposable);
+    }
+    
+    return disposable;
+  }
+  
+  dispose(): void {
+    // 模拟dispose方法
+    for (const disposable of this.disposables) {
+      disposable.dispose();
+    }
+    this.disposables = [];
   }
 }
