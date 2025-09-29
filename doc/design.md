@@ -348,6 +348,7 @@ export class Logger {
 // webviewManager.ts
 import * as vscode from 'vscode';
 import { Logger } from './utils/logger';
+import * as fs from 'fs';
 
 export class WebviewManager {
   private static instance: WebviewManager;
@@ -405,7 +406,7 @@ export class WebviewManager {
     );
   }
   
-  // 获取Webview内容
+  // 获取Webview内容 - 使用HTML模板文件方式
   private getWebviewContent(context: vscode.ExtensionContext): string {
     // 获取静态资源路径
     const vueJsPath = this.getResourcePath(context, 'static/js/vue.min.js');
@@ -413,7 +414,36 @@ export class WebviewManager {
     const appJsPath = this.getResourcePath(context, 'static/js/app.js');
     const styleCssPath = this.getResourcePath(context, 'static/css/style.css');
     
-    // 直接返回HTML内容，包含Vue2和相关JS的引用
+    // 读取HTML模板文件内容
+    const templatePath = context.asAbsolutePath('static/html/webview-template.html');
+    let templateContent = '';
+    
+    try {
+      // 读取模板文件
+      templateContent = fs.readFileSync(templatePath, 'utf8');
+      
+      // 替换模板中的占位符
+      templateContent = templateContent
+        .replace('{{vueJsPath}}', vueJsPath.toString())
+        .replace('{{vueI18nJsPath}}', vueI18nJsPath.toString())
+        .replace('{{appJsPath}}', appJsPath.toString())
+        .replace('{{styleCssPath}}', styleCssPath.toString());
+    } catch (error) {
+      console.error('Failed to load HTML template:', error);
+      // 如果模板加载失败，返回默认的HTML内容作为备用
+      templateContent = this.getDefaultHtmlContent(vueJsPath, vueI18nJsPath, appJsPath, styleCssPath);
+    }
+    
+    return templateContent;
+  }
+  
+  // 默认HTML内容，作为模板加载失败时的备用
+  private getDefaultHtmlContent(
+    vueJsPath: vscode.Uri,
+    vueI18nJsPath: vscode.Uri,
+    appJsPath: vscode.Uri,
+    styleCssPath: vscode.Uri
+  ): string {
     return `
       <!DOCTYPE html>
       <html lang="zh-CN">
@@ -425,16 +455,14 @@ export class WebviewManager {
       </head>
       <body>
         <div id="app">
-          <!-- Vue应用内容 -->
           <div class="container">
-            <h1>{{ $t('welcome.title') }}</h1>
-            <input v-model="inputData" type="text" placeholder="{{ $t('input.placeholder') }}">
-            <button @click="sendCommand">{{ $t('button.send') }}</button>
+            <h1>模板加载失败，使用默认界面</h1>
+            <input v-model="inputData" type="text" placeholder="输入内容">
+            <button @click="sendCommand">发送</button>
             <div v-if="result" class="result">{{ result }}</div>
           </div>
         </div>
         
-        <!-- 直接引用Vue2和相关JS文件 -->
         <script src="${vueJsPath}"></script>
         <script src="${vueI18nJsPath}"></script>
         <script src="${appJsPath}"></script>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Tool</title>
+  <link rel="stylesheet" href="{{styleCssPath}}">
+</head>
+<body>
+  <div id="app">
+    <!-- Vue应用内容 -->
+    <div class="container">
+      <h1>{{ $t('welcome.title') }}</h1>
+      <input v-model="inputData" type="text" placeholder="{{ $t('input.placeholder') }}">
+      <button @click="sendCommand">{{ $t('button.send') }}</button>
+      <div v-if="result" class="result">{{ result }}</div>
+    </div>
+  </div>
+  
+  <!-- 直接引用Vue2和相关JS文件 -->
+  <script src="{{vueJsPath}}"></script>
+  <script src="{{vueI18nJsPath}}"></script>
+  <script src="{{appJsPath}}"></script>
+</body>
+</html>
