@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import { jest } from '@jest/globals';
 
 /**
@@ -94,19 +93,20 @@ export class TestHelpers {
 
   /**
    * 模拟模板文件加载失败
+   * @returns 恢复函数
    */
-  static mockTemplateLoadingFailure(): void {
+  static mockTemplateLoadingFailure(): () => void {
     // 保存原始的fs.readFileSync方法
     const originalReadFileSync = fs.readFileSync;
     
     // 模拟读取失败
-    jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+    const mockReadFileSync = jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
       throw new Error('File not found');
     });
     
     // 返回恢复函数
     return () => {
-      fs.readFileSync = originalReadFileSync;
+      mockReadFileSync.mockRestore();
     };
   }
 
@@ -139,7 +139,7 @@ export class TestHelpers {
     const usesHttpsForExternalResources = hasHttpsReferences && !hasHttpReferences;
     
     // 检查是否有有效的CSP策略
-    const hasCsp = /<meta\s+http-equiv="Content-Security-Policy"/i.test(htmlContent);
+    const hasValidCsp = /<meta\s+http-equiv="Content-Security-Policy"/i.test(htmlContent);
     
     // 检查是否使用了Webview URI
     const usesWebviewUri = /vscode-webview:\/\//i.test(htmlContent);
@@ -155,19 +155,43 @@ export class TestHelpers {
 /**
  * 模拟的VSCode ExtensionContext类
  */
-export class MockExtensionContext implements vscode.ExtensionContext {
+export class MockExtensionContext implements Partial<vscode.ExtensionContext> {
   subscriptions: { dispose(): void }[] = [];
   extensionPath: string;
   storagePath?: string = undefined;
   globalStoragePath: string;
-  workspaceState: vscode.Memento = new MockMemento();
-  globalState: vscode.Memento = new MockMemento();
+  workspaceState: any = new MockMemento();
+  globalState: any = new MockMemento();
   extensionUri: vscode.Uri;
+  
+  // 使用any类型简化测试
+  secrets: any = {
+    get: jest.fn(),
+    store: jest.fn(),
+    delete: jest.fn()
+  };
+  
+  environmentVariableCollection: any = {
+    replace: jest.fn(),
+    append: jest.fn(),
+    prepend: jest.fn(),
+    get: jest.fn().mockReturnValue(undefined),
+    delete: jest.fn(),
+    clear: jest.fn(),
+    getScoped: jest.fn().mockReturnValue({})
+  };
+  
+  storageUri: any = undefined;
+  globalStorageUri: vscode.Uri;
+  extensionMode: vscode.ExtensionMode = vscode.ExtensionMode.Test;
+  logPath: string = '';
+  asExternalUri: any = jest.fn(async (uri: vscode.Uri): Promise<any> => vscode.Uri.parse('https://example.com'));
   
   constructor(extensionPath: string) {
     this.extensionPath = extensionPath;
     this.globalStoragePath = path.join(extensionPath, 'globalStorage');
     this.extensionUri = vscode.Uri.file(this.extensionPath);
+    this.globalStorageUri = vscode.Uri.file(this.globalStoragePath);
   }
   
   asAbsolutePath(relativePath: string): string {
@@ -180,6 +204,7 @@ export class MockExtensionContext implements vscode.ExtensionContext {
  */
 export class MockMemento implements vscode.Memento {
   private data: { [key: string]: any } = {};
+  private syncKeys: string[] = [];
   
   get<T>(key: string, defaultValue?: T): T | undefined {
     return this.data[key] ?? defaultValue;
@@ -188,6 +213,14 @@ export class MockMemento implements vscode.Memento {
   update(key: string, value: any): Thenable<void> {
     this.data[key] = value;
     return Promise.resolve();
+  }
+  
+  keys(): readonly string[] {
+    return Object.keys(this.data);
+  }
+  
+  setKeysForSync(keys: readonly string[]): void {
+    this.syncKeys = [...keys];
   }
 }
 

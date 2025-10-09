@@ -1,0 +1,5 @@
+{
+    "use_mock": false,
+    "llm_base_url": "https://api-inference.modelscope.cn/v1/",
+    "llm_token": "your_api_token_here"
+}

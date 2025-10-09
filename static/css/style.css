@@ -1,0 +1,462 @@
+/* Interactive Tool Webview 样式文件 */
+
+/* 全局样式重置 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background-color: #f5f5f5;
+  padding: 10px;
+}
+
+/* 容器样式 */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+}
+
+/* 标题样式 */
+h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+  color: #2c3e50;
+  text-align: center;
+}
+
+/* 工具选择区域 */
+.tool-selection {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tool-selection label {
+  font-weight: 500;
+  color: #555;
+}
+
+.tool-selection select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.tool-selection select:hover {
+  border-color: #4a9eff;
+}
+
+.tool-selection select:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+/* 输入区域 */
+.input-area {
+  margin-bottom: 15px;
+}
+
+.input-area textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.3s;
+}
+
+.input-area textarea:hover {
+  border-color: #4a9eff;
+}
+
+.input-area textarea:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.button-group button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.button-group button:first-child {
+  background-color: #4a9eff;
+  color: #fff;
+}
+
+.button-group button:first-child:hover:not(:disabled) {
+  background-color: #3584e4;
+}
+
+.button-group button:nth-child(2) {
+  background-color: #ff7d00;
+  color: #fff;
+}
+
+.button-group button:nth-child(2):hover:not(:disabled) {
+  background-color: #e66a00;
+}
+
+.button-group button:last-child {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.button-group button:last-child:hover:not(:disabled) {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.button-group button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 状态信息栏 */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 15px;
+  padding: 8px 12px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.status-executing {
+  color: #ff7d00;
+  font-weight: 500;
+}
+
+.status-ready {
+  color: #52c41a;
+}
+
+.process-count, .execution-time {
+  font-style: italic;
+}
+
+/* 输出区域 */
+.output-area {
+  margin-bottom: 20px;
+}
+
+.output-header {
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.output-content {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: #fafafa;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 消息行样式 */
+.message-line {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  padding-left: 5px;
+  border-left: 2px solid transparent;
+}
+
+.message-line:last-child {
+  margin-bottom: 0;
+}
+
+.message-line.error {
+  border-left-color: #ff4d4f;
+  color: #ff4d4f;
+}
+
+.message-line.command {
+  border-left-color: #4a9eff;
+  color: #4a9eff;
+}
+
+.message-line.text {
+  color: #333;
+}
+
+.message-line.info {
+  color: #52c41a;
+  border-left-color: #52c41a;
+}
+
+/* 图标样式 */
+.error-icon, .command-icon, .text-icon, .default-icon {
+  margin-right: 8px;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.message-content {
+  flex: 1;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* 特殊操作区域 */
+.special-action {
+  margin: 20px 0;
+  text-align: center;
+}
+
+/* 特殊操作按钮 */
+.special-action-btn {
+  padding: 10px 24px;
+  background-color: #52c41a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.special-action-btn:hover:not(:disabled) {
+  background-color: #45a819;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+}
+
+.special-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 历史命令区域 */
+.history-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.history-header {
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-item {
+  padding: 6px 12px;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.history-item:hover {
+  background-color: #4a9eff;
+  color: #fff;
+  border-color: #4a9eff;
+}
+
+/* 滚动条样式 */
+.output-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.output-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.output-content::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.output-content::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+  .container {
+    padding: 15px;
+  }
+  
+  h1 {
+    font-size: 20px;
+  }
+  
+  .tool-selection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .button-group button {
+    width: 100%;
+  }
+  
+  .status-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+  
+  .history-item {
+    max-width: 100%;
+  }
+}
+
+/* 代码容器样式 */
+.code-container {
+  position: relative;
+  margin: 10px 0;
+  background-color: #1e1e1e;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* 代码头部样式 */
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #2d2d2d;
+  color: #cccccc;
+  font-size: 12px;
+  border-bottom: 1px solid #3e3e3e;
+}
+
+/* 代码语言标签 */
+.code-language {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* 代码操作按钮组 */
+.code-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* 代码操作按钮样式 */
+.code-action-btn {
+  background-color: transparent;
+  color: #cccccc;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+}
+
+.code-action-btn:hover {
+  background-color: #3e3e3e;
+  color: #ffffff;
+}
+
+/* 复制按钮特殊样式 */
+.copy-btn:hover {
+  color: #4caf50;
+}
+
+/* 执行按钮特殊样式 */
+.execute-btn:hover {
+  color: #2196f3;
+}
+
+/* 代码块样式 */
+.code-container pre {
+  margin: 0;
+  padding: 15px;
+  background-color: #1e1e1e;
+  color: #f8f8f2;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.code-container code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+}
+
+/* highlight.js 主题覆盖 */
+.code-container code.hljs {
+  background: transparent;
+  padding: 0;
+}
+
+/* 确保代码容器在消息中的正确显示 */
+.message-content .code-container {
+  margin: 10px 0;
+}

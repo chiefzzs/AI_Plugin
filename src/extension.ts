@@ -3,14 +3,29 @@
  * VSCode插件的主入口文件
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Logger } from './utils/logger';
 import { WebviewManager } from './utils/webviewManager';
 import { TerminalManager } from './utils/terminalManager';
+import { ToolProcessor } from './utils/toolProcessor';
 
-// 视图提供程序类
+// 定义Webview消息接口
 interface WebviewMessage {
   command: string;
   text?: string;
+  toolName?: string;
+  sequenceId?: string;
+  processId?: string;
+  data?: any;
+}
+
+// 定义工具响应接口
+interface ToolResponse {
+  type: string;
+  content: string;
+  isError: boolean;
+  isEnd: boolean;
+  sequenceId: string;
 }
 
 class InteractiveToolViewProvider implements vscode.WebviewViewProvider {
@@ -19,10 +34,18 @@ class InteractiveToolViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private readonly _context: vscode.ExtensionContext;
   private _webviewManager: WebviewManager;
+  private _toolProcessor: ToolProcessor;
+  private _activeProcesses: Map<string, string> = new Map(); // sequenceId -> processId
 
   constructor(_context: vscode.ExtensionContext) {
     this._context = _context;
     this._webviewManager = WebviewManager.getInstance();
+    
+    // 初始化工具处理器
+    const toolsDir = path.join(this._context.extensionPath, 'tools');
+    this._toolProcessor = ToolProcessor.getInstance({
+      toolsDir: toolsDir
+    });
   }
 
   public resolveWebviewView(
@@ -45,31 +68,120 @@ class InteractiveToolViewProvider implements vscode.WebviewViewProvider {
     // 添加消息监听
     webviewView.webview.onDidReceiveMessage(
       (message: WebviewMessage) => {
-        switch (message.command) {
-          case 'executeCommand': {
-            // 处理从Webview发送的命令
-            Logger.debug(`Received command from webview: ${message.text || ''}`);
-            const terminalManager = new TerminalManager();
-            void terminalManager.executeCommand('Interactive Tool Terminal', message.text || '')
-              .then(result => {
-                void webviewView.webview.postMessage({
-                  command: 'commandResult',
-                  result: result
-                });
-              })
-              .catch(error => {
-                void webviewView.webview.postMessage({
-                  command: 'commandError',
-                  error: error instanceof Error ? error.message : String(error)
-                });
-              });
-            return;
-          }
-        }
+        this.handleWebviewMessage(message, webviewView.webview);
       },
       undefined,
       this._context.subscriptions
     );
+  }
+
+  /**
+   * 处理来自Webview的消息
+   */
+  private handleWebviewMessage(message: WebviewMessage, webview: vscode.Webview): void {
+    switch (message.command) {
+      case 'executeCommand': {
+        // 处理从Webview发送的终端命令
+        Logger.debug(`Received terminal command from webview: ${message.text || ''}`);
+        const terminalManager = new TerminalManager();
+        void terminalManager.executeCommand('Interactive Tool Terminal', message.text || '')
+          .then(result => {
+            void webview.postMessage({
+              command: 'commandResult',
+              result: result,
+              sequenceId: message.sequenceId
+            });
+          })
+          .catch(error => {
+            void webview.postMessage({
+              command: 'commandError',
+              error: error instanceof Error ? error.message : String(error),
+              sequenceId: message.sequenceId
+            });
+          });
+        return;
+      }
+      
+      case 'executeTool': {
+        // 处理从Webview发送的工具执行请求
+        if (!message.toolName || !message.text || !message.sequenceId) {
+          Logger.error('Invalid tool execution request: missing required parameters');
+          void webview.postMessage({
+            command: 'toolError',
+            error: 'Invalid request: missing required parameters',
+            sequenceId: message.sequenceId
+          });
+          return;
+        }
+        
+        Logger.debug(`Received tool execution request: ${message.toolName}, command: ${message.text}, sequenceId: ${message.sequenceId}`);
+        
+        // 执行工具
+        const processId = this._toolProcessor.executeTool(
+          message.toolName,
+          message.text,
+          message.sequenceId,
+          (response: ToolResponse) => {
+            // 转发响应到Webview
+            void webview.postMessage({
+              command: 'toolResponse',
+              response: response,
+              sequenceId: message.sequenceId
+            });
+          },
+          (error: Error) => {
+            // 处理执行错误
+            Logger.error(`Tool execution error: ${error.message}`);
+            void webview.postMessage({
+              command: 'toolError',
+              error: error.message,
+              sequenceId: message.sequenceId
+            });
+          },
+          () => {
+            // 执行完成回调
+            Logger.debug(`Tool execution completed: ${message.toolName}, sequenceId: ${message.sequenceId}`);
+            if (message.sequenceId) {
+              this._activeProcesses.delete(message.sequenceId);
+            }
+          }
+        );
+        
+        // 记录活跃进程
+        if (processId && message.sequenceId) {
+          this._activeProcesses.set(message.sequenceId, processId);
+        }
+        
+        return;
+      }
+      
+      case 'cancelExecution': {
+        // 取消工具执行
+        if (message.sequenceId) {
+          const processId = this._activeProcesses.get(message.sequenceId);
+          if (processId) {
+            Logger.debug(`Cancelling execution for sequenceId: ${message.sequenceId}`);
+            this._toolProcessor.cancelExecution(processId);
+            this._activeProcesses.delete(message.sequenceId);
+            void webview.postMessage({
+              command: 'executionCancelled',
+              sequenceId: message.sequenceId
+            });
+          }
+        }
+        return;
+      }
+      
+      case 'getActiveProcesses': {
+        // 获取活跃进程数量
+        const count = this._toolProcessor.getActiveProcessCount();
+        void webview.postMessage({
+          command: 'activeProcessesCount',
+          count: count
+        });
+        return;
+      }
+    }
   }
 }
 
@@ -80,7 +192,11 @@ class InteractiveToolViewProvider implements vscode.WebviewViewProvider {
 export function activate(context: vscode.ExtensionContext): void {
   Logger.info('Interactive Tool extension activated');
 
-  // WebviewManager实例将在InteractiveToolViewProvider中创建
+  // 初始化ToolProcessor单例
+  const toolsDir = path.join(context.extensionPath, 'tools');
+  ToolProcessor.getInstance({
+    toolsDir: toolsDir
+  });
 
   // 创建TerminalManager实例
   const terminalManager = new TerminalManager();

@@ -108,11 +108,11 @@ describe('WebviewManager', () => {
     });
 
     it('应该重用已存在的Webview面板', () => {
-      // 设置webviewPanel已存在
-      mockWebviewManager.webviewPanel = mockWebviewPanel;
+      // 使用类型断言绕过类型检查
+      (mockWebviewManager as any).webviewPanel = mockWebviewPanel;
 
       // 调用方法
-      mockWebviewManager.createOrShowWebview(mockContext);
+      mockWebviewManager.createOrShowWebview(mockContext as any);
 
       // 验证方法被调用
       expect(mockWebviewManager.createOrShowWebview).toHaveBeenCalledWith(mockContext);
@@ -174,8 +174,8 @@ describe('WebviewManager', () => {
 
   describe('sendMessageToWebview方法', () => {
     it('应该向活跃的Webview发送消息', () => {
-      // 配置mock行为
-      mockWebviewManager.webviewPanel = mockWebviewPanel;
+      // 配置mock行为，使用类型断言
+      (mockWebviewManager as any).webviewPanel = mockWebviewPanel;
 
       // 调用方法
       const mockMessage = { type: 'test', data: 'test data' };

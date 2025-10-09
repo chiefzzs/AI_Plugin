@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Chat (多轮对话界面)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- 直接引用Vue2的CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+    <!-- 引入Marked库用于Markdown解析 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.0.18/marked.min.js"></script>
+    <!-- 引入highlight.js用于代码语法高亮 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/vs2015.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/lib/highlight.min.js"></script>
+    <!-- 引入Font Awesome用于图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* 聊天界面特有样式 */
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 1000px;
+      margin: 0 auto;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+    
+    .chat-header {
+      padding: 15px 20px;
+      background-color: #4a9eff;
+      color: white;
+      font-size: 18px;
+      font-weight: 500;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+    }
+    
+    .message-wrapper {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .message-wrapper.user {
+      align-items: flex-end;
+    }
+    
+    .message-wrapper.bot {
+      align-items: flex-start;
+    }
+    
+    .message-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: white;
+      margin-bottom: 8px;
+    }
+    
+    .message-wrapper.user .message-avatar {
+      background-color: #4a9eff;
+    }
+    
+    .message-wrapper.bot .message-avatar {
+      background-color: #52c41a;
+    }
+    
+    .message-content {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      word-wrap: break-word;
+    }
+    
+    .message-wrapper.user .message-content {
+      background-color: #4a9eff;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .message-wrapper.bot .message-content {
+      background-color: white;
+      color: #333;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    
+    .message-time {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+    
+    .chat-input-area {
+      padding: 20px;
+      background-color: #fff;
+      border-top: 1px solid #eee;
+    }
+    
+    .chat-input-area textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color 0.3s;
+    }
+    
+    .chat-input-area textarea:hover {
+      border-color: #4a9eff;
+    }
+    
+    .chat-input-area textarea:focus {
+      outline: none;
+      border-color: #4a9eff;
+      box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+    }
+    
+    .chat-button-group {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      gap: 10px;
+    }
+    
+    .chat-button-group button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .chat-button-group button:first-child {
+      background-color: #4a9eff;
+      color: #fff;
+    }
+    
+    .chat-button-group button:first-child:hover:not(:disabled) {
+      background-color: #3584e4;
+    }
+    
+    .chat-button-group button:last-child {
+      background-color: #f0f0f0;
+      color: #666;
+    }
+    
+    .chat-button-group button:last-child:hover:not(:disabled) {
+      background-color: #e0e0e0;
+      color: #333;
+    }
+    
+    .chat-button-group button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* 不同类型内容的样式 */
+    .message-content pre {
+      background-color: #f5f5f5;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+    }
+    
+    .message-content code {
+      background-color: #f5f5f5;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+    }
+    
+    .message-content pre code {
+      background-color: transparent;
+      padding: 0;
+    }
+    
+    .message-content img {
+      max-width: 100%;
+      border-radius: 4px;
+      margin: 8px 0;
+    }
+    
+    .message-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+    }
+    
+    .message-content table th, 
+    .message-content table td {
+      padding: 8px;
+      text-align: left;
+      border: 1px solid #ddd;
+    }
+    
+    .message-content table th {
+      background-color: #f5f5f5;
+      font-weight: 500;
+    }
+    
+    .message-content ul, 
+    .message-content ol {
+      margin: 8px 0;
+      padding-left: 24px;
+    }
+    
+    .message-content li {
+      margin-bottom: 4px;
+    }
+    
+    /* 模拟加载状态 */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 16px;
+      background-color: white;
+      border-radius: 18px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background-color: #4a9eff;
+      border-radius: 50%;
+      animation: typing 1.4s infinite ease-in-out both;
+    }
+    
+    .typing-indicator span:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    
+    .typing-indicator span:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+    
+    @keyframes typing {
+      0%, 80%, 100% {
+        transform: scale(0);
+      }
+      40% {
+        transform: scale(1.0);
+      }
+    }
+    
+    /* 系统提示 */
+    .system-message {
+      text-align: center;
+      margin: 15px 0;
+    }
+    
+    .system-message span {
+      display: inline-block;
+      background-color: #f0f0f0;
+      color: #666;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Vue应用内容 -->
+    <div class="chat-container">
+      <div class="chat-header">
+        Interactive Chat (多轮对话界面)
+      </div>
+      
+      <!-- 聊天消息区域 -->
+      <div class="chat-messages" ref="chatMessages">
+        <!-- 系统消息 -->
+        <div class="system-message">
+          <span>开始对话</span>
+        </div>
+        
+        <!-- 消息列表 -->
+        <div v-for="(message, index) in messages" :key="index" class="message-wrapper" :class="message.type">
+          <div class="message-avatar">
+            {{ message.type === 'user' ? '我' : 'AI' }}
+          </div>
+          <div class="message-content" v-html="formatMessageContent(message.content, message.contentType)"></div>
+          <div class="message-time">
+            {{ message.time }}
+          </div>
+        </div>
+        
+        <!-- 正在输入指示器 -->
+        <div v-if="isTyping" class="message-wrapper bot">
+          <div class="message-avatar">AI</div>
+          <div class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 输入区域 -->
+      <div class="chat-input-area">
+        <textarea v-model="inputMessage" placeholder="请输入您的问题或指令..." rows="3" :disabled="isTyping"></textarea>
+        <div class="chat-button-group">
+          <button @click="sendMessage" :disabled="!inputMessage.trim() || isTyping">发送</button>
+          <button @click="clearMessages" :disabled="isTyping">清空对话</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Vue应用实例
+    new Vue({
+      el: '#app',
+      data: {
+        messages: [],
+        inputMessage: '',
+        isTyping: false,
+        mockResponses: [
+          // Mock响应数据，模拟Python API返回的不同类型内容
+          {
+            contentType: 'text',
+            content: '感谢您的提问！我是一个交互式对话助手，可以帮助您解答问题、提供信息或者执行简单的任务。请问有什么可以帮您的吗？'
+          },
+          {
+            contentType: 'markdown',
+            content: '# 欢迎使用交互式对话助手\n\n## 我能为您做什么？\n\n- 回答问题\n- 提供信息\n- 执行简单任务\n- 展示各种类型的内容\n\n请随时向我提问！'
+          },
+          {
+            contentType: 'code',
+            content: '// 这是一个示例代码\nfunction helloWorld() {\n  console.log("Hello, World!");\n  return "成功执行";\n}\n\n// 调用函数\nconst result = helloWorld();'
+          },
+          {
+            contentType: 'table',
+            content: `<table>\n  <thead>\n    <tr>\n      <th>产品名称</th>\n      <th>价格</th>\n      <th>库存</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td>产品A</td>\n      <td>¥100</td>\n      <td>50</td>\n    </tr>\n    <tr>\n      <td>产品B</td>\n      <td>¥200</td>\n      <td>30</td>\n    </tr>\n    <tr>\n      <td>产品C</td>\n      <td>¥300</td>\n      <td>20</td>\n    </tr>\n  </tbody>\n</table>`
+          },
+          {
+            contentType: 'image',
+            content: 'https://via.placeholder.com/400x200?text=示例图片+展示'
+          },
+          {
+            contentType: 'mixed',
+            content: '# 混合内容示例\n\n## 文本说明\n这是一段包含多种内容类型的回复。\n\n## 代码示例\n```javascript\nfunction calculateSum(a, b) {\n  return a + b;\n}\n```\n\n## 数据表格\n| 名称 | 值 | 备注 |\n|------|-----|------|\n| A | 10 | 示例数据A |\n| B | 20 | 示例数据B |\n\n## 图片展示\n![示例图片](https://via.placeholder.com/300x150?text=测试图片)\n\n希望这个混合内容示例能够满足您的需求！'
+          }
+        ],
+        conversationId: null
+      },
+      mounted() {
+        // 初始化对话ID
+        this.conversationId = 'conv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 添加欢迎消息
+        this.addBotMessage('欢迎使用智能助手！我可以为您提供各种帮助。\n\nPython端测试功能：输入以下数字可以测试不同类型的响应\n1 - 返回文本响应\n2 - 返回表格响应\n3 - 返回命令行响应\n4 - 返回代码响应\n5 - 返回错误命令响应\n6 - 返回空响应\n7 - 模拟超时\n8 - 模拟请求失败\n9 - 多工具调用（文本+表格）\n10 - 连续返回多个响应\n11 - 连续返回各种类型');
+      },
+      methods: {
+        // 发送消息
+        sendMessage() {
+          if (!this.inputMessage.trim() || this.isTyping) {
+            return;
+          }
+          
+          const messageText = this.inputMessage.trim();
+          
+          // 添加用户消息
+          this.addUserMessage(messageText);
+          
+          // 清空输入框
+          this.inputMessage = '';
+          
+          // 设置正在输入状态
+          this.isTyping = true;
+          
+          // 滚动到底部
+          this.scrollToBottom();
+          
+          // 构建发送给Python的数据
+          const requestData = {
+            conversationId: this.conversationId,
+            content: messageText, // 使用content字段与后端匹配
+            timestamp: new Date().toISOString()
+          };
+          
+          console.log('发送给Python的JSON数据:', requestData);
+          
+          // 调用Python API
+          fetch('http://localhost:5000/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('从Python收到的JSON数据:', data);
+            
+            if (data.success && data.data) {
+              // 解析返回的数据，提取文本内容
+              let content = data.data.content || '没有内容';
+              let contentType = 'text';
+              
+              // 如果有tool_calls，也处理这些内容
+              if (data.data.tool_calls && data.data.tool_calls.length > 0) {
+                data.data.tool_calls.forEach(toolCall => {
+                  if (toolCall.name === 'output_text' && toolCall.parameters) {
+                    content += '\n\n' + toolCall.parameters.content;
+                  } else if (toolCall.name === 'output_table' && toolCall.parameters) {
+                    // 简单处理表格数据
+                    const tableData = toolCall.parameters;
+                    content += '\n\n## ' + (tableData.metadata?.title || '表格数据');
+                    content += '\n' + tableData.header.join('\t|\t');
+                    content += '\n' + '-'.repeat(tableData.header.join('---').length);
+                    tableData.rows.forEach(row => {
+                      content += '\n' + row.join('\t|\t');
+                    });
+                    contentType = 'markdown';
+                  }
+                });
+              }
+              
+              // 添加机器人回复
+              this.addBotMessage(content, contentType);
+            } else {
+              this.addBotMessage('抱歉，处理请求时出错: ' + (data.error || '未知错误'), 'text');
+            }
+          })
+          .catch(error => {
+            console.error('API调用错误:', error);
+            this.addBotMessage('抱歉，无法连接到服务器: ' + error.message, 'text');
+          })
+          .finally(() => {
+            // 取消正在输入状态
+            this.isTyping = false;
+            
+            // 滚动到底部
+            this.scrollToBottom();
+          });
+        },
+        
+        // 添加用户消息
+        addUserMessage(content) {
+          this.messages.push({
+            type: 'user',
+            content: content,
+            contentType: 'text',
+            time: new Date().toLocaleTimeString()
+          });
+        },
+        
+        // 添加机器人消息
+        addBotMessage(content, contentType = 'text') {
+          this.messages.push({
+            type: 'bot',
+            content: content,
+            contentType: contentType,
+            time: new Date().toLocaleTimeString()
+          });
+        },
+        
+        // 本地Mock响应函数（当API不可用时使用）
+        getMockResponse(messageText) {
+          // 检查是否为数字输入（1到mockResponses数量之间）
+          const num = parseInt(messageText.trim());
+          if (!isNaN(num) && num >= 1 && num <= this.mockResponses.length) {
+            // 返回指定索引的响应（数字减1因为数组索引从0开始）
+            return this.mockResponses[num - 1];
+          } else {
+            // 非数字输入，返回随机响应
+            const randomIndex = Math.floor(Math.random() * this.mockResponses.length);
+            return this.mockResponses[randomIndex];
+          }
+        },
+        
+        // 格式化消息内容
+        formatMessageContent(content, contentType) {
+          if (!content) return '';
+          
+          try {
+            switch (contentType) {
+              case 'markdown':
+                // 使用marked库解析Markdown，添加错误处理
+                if (window.marked && typeof window.marked.parse === 'function') {
+                  return window.marked.parse(content);
+                } else if (window.marked && typeof window.marked === 'function') {
+                  return window.marked(content);
+                } else {
+                  // 如果marked不可用，使用简单的文本处理作为fallback
+                  return content.replace(/\n/g, '<br>');
+                }
+                case 'code':
+                  // 代码块格式化 - 添加语法高亮、复制按钮和执行按钮
+                  const codeId = 'code-block-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                  // 正确转义内容以在onclick属性中使用
+                  const escapedContent = content.replace(/'/g, '\\\'').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+                  return `
+                    <div class="code-container" id="${codeId}">
+                      <div class="code-header">
+                        <span class="code-language">javascript</span>
+                        <div class="code-actions">
+                          <button class="code-action-btn copy-btn" onclick="copyCodeBlock('${codeId}')" title="复制代码">
+                            <i class="fas fa-copy"></i>
+                          </button>
+                          <button class="code-action-btn execute-btn" onclick="executeCodeBlock('${codeId}', '${escapedContent}')" title="执行代码">
+                            <i class="fas fa-play"></i>
+                          </button>
+                        </div>
+                      </div>
+                      <pre><code class="hljs">${content}</code></pre>
+                    </div>
+                  `;
+              case 'table':
+                // 表格直接返回HTML
+                return content;
+              case 'image':
+                // 图片格式化
+                return `<img src="${content}" alt="响应图片">`;
+              case 'mixed':
+                // 混合内容使用Markdown解析
+                if (window.marked && typeof window.marked.parse === 'function') {
+                  return window.marked.parse(content);
+                } else if (window.marked && typeof window.marked === 'function') {
+                  return window.marked(content);
+                } else {
+                  // 如果marked不可用，使用简单的文本处理作为fallback
+                  return content.replace(/\n/g, '<br>');
+                }
+              default:
+                // 文本内容，进行简单的换行处理
+                return content.replace(/\n/g, '<br>');
+            }
+          } catch (error) {
+            console.error('格式化内容时出错:', error);
+            // 出错时返回原始内容（带换行处理）
+            return content.replace(/\n/g, '<br>');
+          }
+        },
+        
+        // 滚动到底部
+        scrollToBottom() {
+          this.$nextTick(() => {
+            const chatMessages = this.$refs.chatMessages;
+            if (chatMessages) {
+              chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+          });
+        },
+        
+        // 清空对话
+        clearMessages() {
+          if (confirm('确定要清空所有对话内容吗？')) {
+            this.messages = [];
+            this.addBotMessage('欢迎使用交互式多轮对话助手！我可以展示不同类型的内容，包括文本、代码、表格、图片等。请开始输入您的问题或指令。');
+            this.scrollToBottom();
+          }
+        }
+      }
+    });
+    
+    // 执行代码块的函数
+    function executeCodeBlock(codeId, codeContent) {
+      // 在控制台打印正在执行的代码
+      console.log('执行代码块:', codeId, codeContent);
+      
+      // 向后台发送命令字2的消息
+      const vueApp = document.getElementById('app').__vue__;
+      if (vueApp) {
+        // 设置输入框内容为'2'
+        vueApp.inputMessage = '2';
+        // 调用发送消息方法
+        vueApp.sendMessage();
+      }
+    }
+    
+    // 复制代码块的函数
+    function copyCodeBlock(codeId) {
+      const codeBlock = document.getElementById(codeId);
+      if (codeBlock) {
+        const codeElement = codeBlock.querySelector('code');
+        if (codeElement) {
+          // 选择代码文本
+          const range = document.createRange();
+          range.selectNode(codeElement);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+          
+          try {
+            // 执行复制操作
+            document.execCommand('copy');
+            
+            // 显示复制成功提示
+            const button = codeBlock.querySelector('.copy-btn');
+            if (button) {
+              const originalText = button.innerHTML;
+              button.innerHTML = '<i class="fas fa-check"></i>';
+              
+              // 2秒后恢复原状
+              setTimeout(() => {
+                button.innerHTML = originalText;
+              }, 2000);
+            }
+          } catch (err) {
+            console.error('复制失败:', err);
+          } finally {
+            // 取消选择
+            window.getSelection().removeAllRanges();
+          }
+        }
+      }
+    }
+    
+    // 初始化语法高亮
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof hljs !== 'undefined') {
+        hljs.highlightAll();
+        
+        // 监听DOM变化，为新添加的代码块应用高亮
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  if (node.classList && node.classList.contains('hljs')) {
+                    hljs.highlightElement(node);
+                  } else {
+                    const codeBlocks = node.querySelectorAll('code.hljs');
+                    codeBlocks.forEach(function(block) {
+                      hljs.highlightElement(block);
+                    });
+                  }
+                }
+              });
+            }
+          });
+        });
+        
+        // 观察聊天内容区域的变化
+        const chatContent = document.querySelector('#chat-content');
+        if (chatContent) {
+          observer.observe(chatContent, {
+            childList: true,
+            subtree: true
+          });
+        }
+      }
+    });
+  </script>
+</body>
+</html>

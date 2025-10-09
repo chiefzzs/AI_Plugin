@@ -10,10 +10,58 @@
   <div id="app">
     <!-- Vue应用内容 -->
     <div class="container">
-      <h1>{{ $t('welcome.title') }}</h1>
-      <input v-model="inputData" type="text" placeholder="{{ $t('input.placeholder') }}">
-      <button @click="sendCommand">{{ $t('button.send') }}</button>
-      <div v-if="result" class="result">{{ result }}</div>
+      <h1>Interactive Tool</h1>
+      
+      <!-- 工具选择区域 -->
+      <div class="tool-selection">
+        <label for="toolName">选择工具：</label>
+        <select v-model="selectedTool" id="toolName">
+          <option value="execinfo">执行信息工具 (execinfo)</option>
+          <option value="interactive_tool">交互式工具 (interactive_tool)</option>
+        </select>
+      </div>
+      
+      <!-- 输入区域 -->
+      <div class="input-area">
+        <textarea v-model="inputCommand" placeholder="输入命令..." rows="4"></textarea>
+        <div class="button-group">
+          <button @click="executeTool" :disabled="isExecuting || !inputCommand.trim()">执行</button>
+          <button @click="cancelExecution" :disabled="!isExecuting">取消</button>
+          <button @click="clearOutput">清空</button>
+        </div>
+      </div>
+      
+      <!-- 状态信息 -->
+      <div class="status-bar">
+        <span v-if="isExecuting" class="status-executing">执行中...</span>
+        <span v-else class="status-ready">就绪</span>
+        <span class="process-count">活跃进程: {{ activeProcessCount }}</span>
+        <span v-if="lastExecutionTime" class="execution-time">上次执行: {{ lastExecutionTime }}</span>
+      </div>
+      
+      <!-- 输出区域 -->
+      <div class="output-area">
+        <div class="output-header">输出结果：</div>
+        <div class="output-content" ref="outputContent">
+          <div v-for="(message, index) in messages" :key="index" :class="['message-line', message.type]">
+            <span v-if="message.type === 'error'" class="error-icon">❌</span>
+            <span v-else-if="message.type === 'command'" class="command-icon">🔧</span>
+            <span v-else-if="message.type === 'text'" class="text-icon">📝</span>
+            <span v-else class="default-icon">•</span>
+            <span class="message-content">{{ message.content }}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 历史命令 -->
+      <div v-if="commandHistory.length > 0" class="history-section">
+        <div class="history-header">历史命令：</div>
+        <div class="history-list">
+          <button v-for="(cmd, index) in commandHistory" :key="index" @click="loadHistoryCommand(cmd)" class="history-item">
+            {{ cmd }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
   
@@ -21,5 +69,161 @@
   <script src="{{vueJsPath}}"></script>
   <script src="{{vueI18nJsPath}}"></script>
   <script src="{{appJsPath}}"></script>
+  
+  <script>
+    // Vue应用实例
+    new Vue({
+      el: '#app',
+      data: {
+        selectedTool: 'execinfo',
+        inputCommand: '',
+        messages: [],
+        isExecuting: false,
+        currentSequenceId: null,
+        activeProcessCount: 0,
+        commandHistory: [],
+        historyLimit: 10,
+        lastExecutionTime: null
+      },
+      mounted() {
+        // 注册消息接收处理
+        window.addEventListener('message', this.handleExtensionMessage);
+        
+        // 请求获取活跃进程数
+        this.updateActiveProcessCount();
+      },
+      methods: {
+        // 执行工具
+        executeTool() {
+          if (!this.inputCommand.trim() || this.isExecuting) {
+            return;
+          }
+          
+          // 生成唯一序列ID
+          this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+          
+          // 记录历史命令
+          this.addToHistory(this.inputCommand.trim());
+          
+          // 更新状态
+          this.isExecuting = true;
+          this.lastExecutionTime = new Date().toLocaleString();
+          
+          // 清空之前的消息
+          this.messages = [];
+          
+          // 添加执行信息
+          this.addMessage('command', `[执行命令] ${this.inputCommand.trim()} (工具: ${this.selectedTool})`);
+          
+          // 发送执行请求到扩展
+          this.sendMessage({
+            command: 'executeTool',
+            toolName: this.selectedTool,
+            text: this.inputCommand.trim(),
+            sequenceId: this.currentSequenceId
+          });
+        },
+        
+        // 取消执行
+        cancelExecution() {
+          if (this.isExecuting && this.currentSequenceId) {
+            this.sendMessage({
+              command: 'cancelExecution',
+              sequenceId: this.currentSequenceId
+            });
+          }
+        },
+        
+        // 清空输出
+        clearOutput() {
+          this.messages = [];
+        },
+        
+        // 加载历史命令
+        loadHistoryCommand(command) {
+          this.inputCommand = command;
+        },
+        
+        // 添加消息到输出
+        addMessage(type, content) {
+          this.messages.push({ type, content });
+          // 滚动到底部
+          this.$nextTick(() => {
+            const outputContent = this.$refs.outputContent;
+            if (outputContent) {
+              outputContent.scrollTop = outputContent.scrollHeight;
+            }
+          });
+        },
+        
+        // 添加到历史记录
+        addToHistory(command) {
+          // 避免重复添加
+          if (!this.commandHistory.includes(command)) {
+            this.commandHistory.unshift(command);
+            // 限制历史记录数量
+            if (this.commandHistory.length > this.historyLimit) {
+              this.commandHistory.pop();
+            }
+          }
+        },
+        
+        // 发送消息到扩展
+        sendMessage(message) {
+          if (window.parent !== window) {
+            window.parent.postMessage(message, '*');
+          }
+        },
+        
+        // 处理来自扩展的消息
+        handleExtensionMessage(event) {
+          const message = event.data;
+          
+          switch (message.command) {
+            case 'toolResponse':
+              // 处理工具响应
+              if (message.response) {
+                const response = message.response;
+                this.addMessage(response.type, response.content);
+                
+                // 检查是否执行结束
+                if (response.isEnd) {
+                  this.isExecuting = false;
+                  this.addMessage('info', `[执行结束] 命令执行完成`);
+                  this.updateActiveProcessCount();
+                }
+              }
+              break;
+              
+            case 'toolError':
+              // 处理工具错误
+              this.addMessage('error', `[执行错误] ${message.error}`);
+              this.isExecuting = false;
+              this.updateActiveProcessCount();
+              break;
+              
+            case 'executionCancelled':
+              // 处理执行取消
+              this.addMessage('info', `[执行取消] 命令执行已取消`);
+              this.isExecuting = false;
+              this.updateActiveProcessCount();
+              break;
+              
+            case 'activeProcessesCount':
+              // 更新活跃进程数
+              this.activeProcessCount = message.count;
+              break;
+          }
+        },
+        
+        // 更新活跃进程数
+        updateActiveProcessCount() {
+          this.sendMessage({
+            command: 'getActiveProcesses'
+          });
+        }
+      }
+    });
+  </script>
 </body>
 </html>

@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Tool (浏览器版)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- 直接引用Vue2的CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Vue应用内容 -->
+    <div class="container">
+      <h1>Interactive Tool (浏览器版)</h1>
+      
+      <!-- API服务器配置 -->
+      <div class="api-config">
+        <label for="commMode">通信模式：</label>
+        <select v-model="commMode" id="commMode" @change="onCommModeChange">
+          <option value="plugin">通过插件通信</option>
+          <option value="direct">直接与Python通信</option>
+        </select>
+      </div>
+      
+      <div class="api-config">
+        <label for="apiUrl">API服务器地址：</label>
+        <input v-model="apiUrl" id="apiUrl" type="text" placeholder="http://localhost:5000/api">
+        <button @click="testApiConnection" :disabled="isTestingConnection">测试连接</button>
+        <span v-if="connectionStatus" :class="connectionStatus === 'connected' ? 'status-connected' : 'status-error'">
+          {{ connectionStatus === 'connected' ? '已连接' : '连接失败' }}
+        </span>
+      </div>
+      
+      <!-- 工具选择区域 -->
+      <div class="tool-selection">
+        <label for="toolName">选择工具：</label>
+        <select v-model="selectedTool" id="toolName">
+          <option value="execinfo">执行信息工具 (execinfo)</option>
+          <option value="interactive_tool">交互式工具 (interactive_tool)</option>
+        </select>
+      </div>
+      
+      <!-- 输入区域 -->
+      <div class="input-area">
+        <textarea v-model="inputCommand" placeholder="输入命令..." rows="4"></textarea>
+        <div class="button-group">
+          <button @click="executeTool" :disabled="isExecuting || !inputCommand.trim() || !isConnected">执行</button>
+          <button @click="cancelExecution" :disabled="!isExecuting">取消</button>
+          <button @click="clearOutput">清空</button>
+        </div>
+      </div>
+      
+      <!-- 状态信息 -->
+      <div class="status-bar">
+        <span v-if="isExecuting" class="status-executing">执行中...</span>
+        <span v-else class="status-ready">就绪</span>
+        <span v-if="lastExecutionTime" class="execution-time">上次执行: {{ lastExecutionTime }}</span>
+      </div>
+      
+      <!-- 输出区域 -->
+      <div class="output-area">
+        <div class="output-header">输出结果：</div>
+        <div class="output-content" ref="outputContent">
+          <div v-for="(message, index) in messages" :key="index" :class="['message-line', message.type]">
+            <span v-if="message.type === 'error'" class="error-icon">❌</span>
+            <span v-else-if="message.type === 'command'" class="command-icon">🔧</span>
+            <span v-else-if="message.type === 'text'" class="text-icon">📝</span>
+            <span v-else class="default-icon">•</span>
+            <span class="message-content">{{ message.content }}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 处理金额数据按钮 -->
+      <div class="special-action">
+        <button @click="handleAmountData" :disabled="isExecuting || !isConnected" class="special-action-btn">
+          处理金额数据
+        </button>
+      </div>
+      
+      <!-- 历史命令 -->
+      <div v-if="commandHistory.length > 0" class="history-section">
+        <div class="history-header">历史命令：</div>
+        <div class="history-list">
+          <button v-for="(cmd, index) in commandHistory" :key="index" @click="loadHistoryCommand(cmd)" class="history-item">
+            {{ cmd }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Vue应用实例
+    new Vue({
+      el: '#app',
+      data: {
+        commMode: 'plugin', // 通信模式：plugin(通过插件) 或 direct(直接通信)
+        apiUrl: 'http://localhost:5000/api',
+        directCommUrl: 'http://localhost:5001', // 直接通信服务器地址
+        selectedTool: 'execinfo',
+        inputCommand: '',
+        messages: [],
+        isExecuting: false,
+        currentSequenceId: null,
+        commandHistory: [],
+        historyLimit: 10,
+        lastExecutionTime: null,
+        connectionStatus: null,
+        isTestingConnection: false,
+        isConnected: false,
+        activeRequests: new Map() // 存储活跃的请求，用于取消功能
+      },
+      mounted() {
+        // 设置默认API地址
+        this.testApiConnection();
+      },
+      
+      computed: {
+        // 获取当前使用的API地址
+        currentApiUrl() {
+          return this.commMode === 'direct' ? this.directCommUrl : this.apiUrl;
+        }
+      },
+      methods: {
+        // 通信模式改变时的处理
+        onCommModeChange() {
+          this.isConnected = false;
+          this.connectionStatus = null;
+          this.messages = [];
+          this.addMessage('info', `通信模式已切换为: ${this.commMode === 'direct' ? '直接与Python通信' : '通过插件通信'}`);
+          this.testApiConnection();
+        },
+        
+        // 测试API连接
+        testApiConnection() {
+        this.isTestingConnection = true;
+        this.connectionStatus = null;
+        
+        // 构造测试连接的URL
+        const testUrl = `${this.currentApiUrl}/test`;
+        
+        this.addMessage('info', `正在测试${this.commMode === 'direct' ? '直接通信' : 'API'}连接: ${testUrl}`);
+        
+        fetch(testUrl)
+          .then(response => {
+            if (response.ok) {
+              this.connectionStatus = 'connected';
+              this.isConnected = true;
+              this.addMessage('info', `${this.commMode === 'direct' ? '直接通信' : 'API'}连接成功: ${testUrl}`);
+            } else {
+              throw new Error(`HTTP错误: ${response.status}`);
+            }
+          })
+            .catch(error => {
+              this.connectionStatus = 'error';
+              this.isConnected = false;
+              this.addMessage('error', `API连接失败: ${error.message}`);
+            })
+            .finally(() => {
+              this.isTestingConnection = false;
+            });
+        },
+        
+        // 执行工具
+        executeTool() {
+        if (!this.inputCommand.trim() || this.isExecuting || !this.isConnected) {
+          return;
+        }
+        
+        // 生成唯一序列ID
+        this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 记录历史命令
+        this.addToHistory(this.inputCommand.trim());
+        
+        // 更新状态
+        this.isExecuting = true;
+        this.lastExecutionTime = new Date().toLocaleString();
+        
+        // 清空之前的消息
+        this.messages = [];
+        
+        // 添加执行信息
+        this.addMessage('command', `[执行命令] ${this.inputCommand.trim()} (工具: ${this.selectedTool})`);
+        
+        // 构造请求体
+        const requestData = {
+          toolName: this.selectedTool,
+          command: this.inputCommand.trim(),
+          sequenceId: this.currentSequenceId
+        };
+        
+        // 根据通信模式选择不同的API调用方式
+        if (this.commMode === 'direct') {
+          // 直接通信模式
+          const requestUrl = `${this.currentApiUrl}/execute`;
+          this.executeToolDirect(requestUrl, requestData);
+        } else {
+          // 通过插件通信模式
+          const requestUrl = `${this.currentApiUrl}/execute/stream`;
+          
+          // 发送执行请求到API（使用Server-Sent Events）
+          try {
+            // 创建EventSource
+            this.eventSource = new EventSource(requestUrl, { withCredentials: true });
+            
+            // 存储当前的EventSource
+            this.activeRequests.set(this.currentSequenceId, this.eventSource);
+            
+            // 监听message事件
+            this.eventSource.addEventListener('message', (event) => {
+              try {
+                // 解析数据
+                const data = JSON.parse(event.data);
+                
+                // 处理工具响应
+                if (data.type === 'error') {
+                  this.addMessage('error', data.content);
+                } else if (data.type === 'complete') {
+                  // 执行完成
+                  this.isExecuting = false;
+                  if (data.error) {
+                    this.addMessage('error', `[执行失败] ${data.error}`);
+                  } else {
+                    this.addMessage('info', `[执行结束] 命令执行完成`);
+                  }
+                  // 关闭EventSource
+                  this.cleanupEventSource();
+                } else {
+                  this.addMessage(data.type || 'text', data.content);
+                }
+              } catch (error) {
+                this.addMessage('error', `[数据解析错误] ${error.message}`);
+              }
+            });
+            
+            // 监听错误事件
+            this.eventSource.addEventListener('error', (error) => {
+              this.addMessage('error', `[连接错误] ${error.type}`);
+              this.isExecuting = false;
+              this.cleanupEventSource();
+            });
+          } catch (error) {
+            // 如果浏览器不支持EventSource，使用普通请求作为备选
+            this.executeToolFallback(requestUrl, requestData);
+          }
+        }
+        },
+        
+        // 直接通信模式的执行方法
+        executeToolDirect(requestUrl, requestData) {
+        // 创建AbortController用于取消请求
+        const controller = new AbortController();
+        const { signal } = controller;
+        
+        // 存储请求控制器，用于取消功能
+        this.activeRequests.set(this.currentSequenceId, controller);
+        
+        // 发送执行请求到直接通信服务器
+        fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: signal,
+          mode: 'cors' // 启用跨域请求
+        })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP错误: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            // 处理API响应
+            if (data.success) {
+              this.processToolResponse(data.result);
+            } else {
+              throw new Error(data.error || '工具执行失败');
+            }
+          })
+          .catch(error => {
+            // 不处理AbortError，因为这是用户主动取消的
+            if (error.name !== 'AbortError') {
+              this.addMessage('error', `[执行错误] ${error.message}`);
+            }
+          })
+          .finally(() => {
+            this.isExecuting = false;
+            this.activeRequests.delete(this.currentSequenceId);
+            this.addMessage('info', `[执行结束] 命令执行完成`);
+          });
+        },
+        
+        // 备选执行方法（当EventSource不可用时）
+        executeToolFallback(requestUrl, requestData) {
+        // 创建AbortController用于取消请求
+        const controller = new AbortController();
+        const { signal } = controller;
+        
+        // 存储请求控制器，用于取消功能
+        this.activeRequests.set(this.currentSequenceId, controller);
+        
+        // 发送执行请求到API
+        fetch(requestUrl.replace('/stream', ''), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: signal
+        })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`HTTP错误: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then(data => {
+              // 处理API响应
+              if (data.success) {
+                this.processToolResponse(data.result);
+              } else {
+                throw new Error(data.error || '工具执行失败');
+              }
+            })
+            .catch(error => {
+              // 不处理AbortError，因为这是用户主动取消的
+              if (error.name !== 'AbortError') {
+                this.addMessage('error', `[执行错误] ${error.message}`);
+              }
+            })
+            .finally(() => {
+              this.isExecuting = false;
+              this.activeRequests.delete(this.currentSequenceId);
+              this.addMessage('info', `[执行结束] 命令执行完成`);
+            });
+        },
+        
+        // 清理EventSource
+        cleanupEventSource() {
+          if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+          }
+          if (this.currentSequenceId) {
+            this.activeRequests.delete(this.currentSequenceId);
+          }
+        },
+        
+        // 取消执行
+        cancelExecution() {
+          if (this.isExecuting && this.currentSequenceId) {
+            // 尝试通过API取消
+            const cancelUrl = `${this.apiUrl}/cancel`;
+            fetch(cancelUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ sequenceId: this.currentSequenceId })
+            }).then(() => {
+              this.addMessage('info', `[执行取消] 命令执行已取消`);
+            }).catch(() => {
+              // 忽略取消请求的错误
+            });
+            
+            // 清理本地资源
+            this.cleanupEventSource();
+            this.isExecuting = false;
+          }
+        },
+        
+        // 处理工具响应
+        processToolResponse(response) {
+          if (response.type === 'error') {
+            this.addMessage('error', response.content);
+          } else {
+            this.addMessage(response.type || 'text', response.content);
+          }
+        },
+        
+        // 清空输出
+        clearOutput() {
+          this.messages = [];
+        },
+        
+        // 加载历史命令
+        loadHistoryCommand(command) {
+          this.inputCommand = command;
+        },
+        
+        // 添加消息到输出
+        addMessage(type, content) {
+          this.messages.push({ type, content });
+          // 滚动到底部
+          this.$nextTick(() => {
+            const outputContent = this.$refs.outputContent;
+            if (outputContent) {
+              outputContent.scrollTop = outputContent.scrollHeight;
+            }
+          });
+        },
+        
+        // 添加到历史记录
+        addToHistory(command) {
+          // 避免重复添加
+          if (!this.commandHistory.includes(command)) {
+            this.commandHistory.unshift(command);
+            // 限制历史记录数量
+            if (this.commandHistory.length > this.historyLimit) {
+              this.commandHistory.pop();
+            }
+          }
+        },
+        
+        // 处理金额数据
+        handleAmountData() {
+        if (this.isExecuting || !this.isConnected) {
+          return;
+        }
+        
+        // 构造金额数据（mock数据）
+        const amountData = {
+          id: 'tx-' + Date.now(),
+          amount: 1000.00,
+          currency: 'CNY',
+          description: '测试金额数据',
+          timestamp: new Date().toISOString()
+        };
+        
+        this.addMessage('info', `[金额数据处理] 构造金额数据: ${JSON.stringify(amountData)}`);
+        
+        // 根据通信模式选择不同的处理方式
+        if (this.commMode === 'direct') {
+          // 直接通信模式 - 直接调用处理金额数据的API
+          this.callProcessAmountDirect(amountData);
+        } else {
+          // 通过插件通信模式 - 调用execinfo工具来执行cmd-third.py
+          this.callExecInfo(amountData);
+        }
+        },
+        
+        // 调用execinfo工具
+        callExecInfo(amountData) {
+          // 生成唯一序列ID
+          this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+          
+          // 更新状态
+          this.isExecuting = true;
+          this.lastExecutionTime = new Date().toLocaleString();
+          
+          // 清空之前的消息
+          this.messages = [];
+          
+          // 添加执行信息
+          this.addMessage('command', `[执行命令] 调用cmd-third.py处理金额数据 (工具: execinfo)`);
+          
+          // 构造请求体 - 通过execinfo调用cmd-third.py
+          const requestData = {
+            toolName: 'execinfo',
+            command: `python d:\\learnning\\plugin\\tools\\cmd-third.py "${JSON.stringify(amountData).replace(/"/g, '\\"')}"`,
+            sequenceId: this.currentSequenceId
+          };
+          
+          // 构造请求URL
+          const requestUrl = `${this.apiUrl}/execute/stream`;
+          
+          // 发送执行请求到API
+          this.executeToolFallbackForExecInfo(requestUrl, requestData);
+        },
+        
+        // 直接通信模式下处理金额数据
+        callProcessAmountDirect(amountData) {
+        // 生成唯一序列ID
+        this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 更新状态
+        this.isExecuting = true;
+        this.lastExecutionTime = new Date().toLocaleString();
+        
+        // 清空之前的消息
+        this.messages = [];
+        
+        // 添加执行信息
+        this.addMessage('command', `[执行命令] 直接调用Python处理金额数据`);
+        
+        // 构造请求体
+        const requestData = {
+          amountData: amountData,
+          sequenceId: this.currentSequenceId
+        };
+        
+        // 构造请求URL
+        const requestUrl = `${this.currentApiUrl}/process-amount`;
+        
+        // 发送执行请求到直接通信服务器
+        this.executeToolDirect(requestUrl, requestData);
+        },
+        
+        // 为execinfo工具的备选执行方法
+        executeToolFallbackForExecInfo(requestUrl, requestData) {
+        // 创建AbortController用于取消请求
+        const controller = new AbortController();
+        const { signal } = controller;
+        
+        // 存储请求控制器，用于取消功能
+        this.activeRequests.set(this.currentSequenceId, controller);
+        
+        // 发送执行请求到API
+        fetch(requestUrl.replace('/stream', ''), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: signal
+        })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`HTTP错误: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then(data => {
+              // 处理API响应
+              if (data.success) {
+                this.processToolResponse(data.result);
+              } else {
+                throw new Error(data.error || '工具执行失败');
+              }
+            })
+            .catch(error => {
+              // 不处理AbortError，因为这是用户主动取消的
+              if (error.name !== 'AbortError') {
+                this.addMessage('error', `[执行错误] ${error.message}`);
+              }
+            })
+            .finally(() => {
+              this.isExecuting = false;
+              this.activeRequests.delete(this.currentSequenceId);
+              this.addMessage('info', `[执行结束] 金额数据处理完成`);
+            });
+        }
+      }
+    });
+  </script>
+</body>
+</html>

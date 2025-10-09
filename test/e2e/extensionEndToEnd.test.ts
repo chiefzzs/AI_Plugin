@@ -42,7 +42,7 @@ jest.mock('vscode', () => ({
   Disposable: {
     from: jest.fn((disposables) => ({
       dispose: jest.fn(() => {
-        disposables.forEach(d => d.dispose?.());
+        disposables.forEach((d: any) => d.dispose?.());
       })
     }))
   }
@@ -96,16 +96,16 @@ describe('Interactive Tool Extension - 端到端测试', () => {
    */
   describe('插件激活流程', () => {
     it('应该成功激活插件', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 验证日志记录函数被调用
       expect(mockLoggerInfo).toHaveBeenCalled();
     });
 
     it('应该注册所有必要的命令', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 验证命令注册
       const registerCommand = vscode.commands.registerCommand as jest.Mock;
@@ -121,8 +121,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
     });
 
     it('应该注册Webview视图提供程序', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 验证视图提供程序注册
       const registerWebviewViewProvider = vscode.window.registerWebviewViewProvider as jest.Mock;
@@ -135,8 +135,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
    */
   describe('命令功能测试', () => {
     it('showWebview命令应该可以执行', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 获取showWebview命令回调
       let showWebviewCommand: Function | undefined;
@@ -157,8 +157,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
     });
 
     it('executeCommand命令应该可以执行', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 获取executeCommand命令回调
       let executeCommandCallback: Function | undefined;
@@ -184,8 +184,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
     });
 
     it('clearTerminals命令应该可以执行', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 获取clearTerminals命令回调
       let clearTerminalsCommand: Function | undefined;
@@ -217,8 +217,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
    */
   describe('Webview功能测试', () => {
     it('应该能够触发Webview相关操作', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 获取showWebview命令回调
       let showWebviewCommand: Function | undefined;
@@ -243,8 +243,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
    */
   describe('插件禁用流程', () => {
     it('应该能够成功禁用插件并清理资源', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 添加一些模拟的订阅
       const mockDisposable1 = { dispose: jest.fn() };
@@ -265,8 +265,8 @@ describe('Interactive Tool Extension - 端到端测试', () => {
    */
   describe('错误处理测试', () => {
     it('应该能够处理命令执行失败的情况', async () => {
-      // 执行激活函数
-      await extension.activate(mockContext);
+      // 执行激活函数，使用类型断言
+      await extension.activate(mockContext as any);
 
       // 获取executeCommand命令回调
       let executeCommandCallback: Function | undefined;
