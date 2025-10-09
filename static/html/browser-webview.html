@@ -6,7 +6,7 @@
   <title>Interactive Tool (浏览器版)</title>
   <link rel="stylesheet" href="../css/style.css">
   <!-- 直接引用Vue2的CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+  <script src="../js/vue.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -72,8 +72,8 @@
         </div>
       </div>
       
-      <!-- 处理金额数据按钮 -->
-      <div class="special-action">
+      <!-- 处理金额数据按钮 - 输入3时显示 -->
+      <div class="special-action" v-if="showAmountButton">
         <button @click="handleAmountData" :disabled="isExecuting || !isConnected" class="special-action-btn">
           处理金额数据
         </button>
@@ -92,6 +92,126 @@
   </div>
   
   <script>
+    // JSON处理服务 - 将mock代码和VSCode插件代码分离
+    class JsonProcessService {
+      constructor(appInstance) {
+        this.app = appInstance;
+      }
+      
+      // 处理工具响应（通用逻辑）
+      processToolResponse(response) {
+        // 添加详细的调试日志
+        console.log('收到工具响应:', {responseType: response?.type, response: response});
+        
+        if (response.type === 'error') {
+          this.app.addMessage('error', response.content);
+        } else {
+          this.app.addMessage(response.type || 'text', response.content);
+          
+          // 记录当前showAmountButton状态
+          console.log('当前showAmountButton状态:', this.app.showAmountButton);
+          
+          // 检查是否需要显示金额处理按钮
+          // 条件：
+          // 1. 当接收到的JSON响应中type字段为'command'
+          // 2. 或者当输入命令为'3'（向后兼容）
+          console.log('检查按钮显示条件:', {
+            responseType: response.type,
+            isCommandType: response.type === 'command',
+            lastInputCommand: this.app.lastInputCommand,
+            isInputCommand3: this.app.lastInputCommand === '3'
+          });
+          
+          if (response.type === 'command' || this.app.lastInputCommand === '3') {
+            console.log('触发显示金额处理按钮:', {responseType: response.type, lastInputCommand: this.app.lastInputCommand});
+            this.app.showAmountButton = true;
+          } else {
+            console.log('不显示金额处理按钮:', {responseType: response.type, lastInputCommand: this.app.lastInputCommand});
+            this.app.showAmountButton = false;
+          }
+          
+          // 记录更新后的showAmountButton状态
+          console.log('更新后showAmountButton状态:', this.app.showAmountButton);
+          // 手动触发Vue响应式更新
+          this.app.$forceUpdate();
+        }
+      }
+      
+      // Mock模式 - 直接与RESTful API交互
+      executeDirectMode(requestUrl, requestData) {
+        // 创建AbortController用于取消请求
+        const controller = new AbortController();
+        const { signal } = controller;
+        
+        // 存储请求控制器，用于取消功能
+        this.app.activeRequests.set(this.app.currentSequenceId, controller);
+        
+        // 发送执行请求到直接通信服务器
+        fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: signal,
+          mode: 'cors' // 启用跨域请求
+        })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP错误: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            // 处理API响应
+            if (data.success) {
+              this.processToolResponse(data.result);
+            } else {
+              throw new Error(data.error || '工具执行失败');
+            }
+          })
+          .catch(error => {
+            // 不处理AbortError，因为这是用户主动取消的
+            if (error.name !== 'AbortError') {
+              this.app.addMessage('error', `[执行错误] ${error.message}`);
+            }
+          })
+          .finally(() => {
+            this.app.isExecuting = false;
+            this.app.activeRequests.delete(this.app.currentSequenceId);
+            this.app.addMessage('info', `[执行结束] 命令执行完成`);
+          });
+      }
+      
+      // Mock模式 - 处理金额数据
+      processAmountDataDirect(amountData) {
+        // 生成唯一序列ID
+        this.app.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 更新状态
+        this.app.isExecuting = true;
+        this.app.lastExecutionTime = new Date().toLocaleString();
+        
+        // 清空之前的消息
+        this.app.messages = [];
+        
+        // 添加执行信息
+        this.app.addMessage('command', `[执行命令] 直接调用Python处理金额数据`);
+        
+        // 构造请求体
+        const requestData = {
+          amountData: amountData,
+          sequenceId: this.app.currentSequenceId
+        };
+        
+        // 构造请求URL
+        const requestUrl = `${this.app.currentApiUrl}/process-amount`;
+        
+        // 发送执行请求到直接通信服务器
+        this.executeDirectMode(requestUrl, requestData);
+      }
+    }
+    
     // Vue应用实例
     new Vue({
       el: '#app',
@@ -110,9 +230,14 @@
         connectionStatus: null,
         isTestingConnection: false,
         isConnected: false,
-        activeRequests: new Map() // 存储活跃的请求，用于取消功能
+        activeRequests: new Map(), // 存储活跃的请求，用于取消功能
+        showAmountButton: false, // 控制是否显示金额处理按钮
+        lastInputCommand: '', // 存储上次输入的命令
+        jsonProcessService: null // JSON处理服务实例
       },
       mounted() {
+        // 初始化JSON处理服务
+        this.jsonProcessService = new JsonProcessService(this);
         // 设置默认API地址
         this.testApiConnection();
       },
@@ -169,11 +294,14 @@
           return;
         }
         
+        // 保存当前输入命令
+        this.lastInputCommand = this.inputCommand.trim();
+        
         // 生成唯一序列ID
         this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         
         // 记录历史命令
-        this.addToHistory(this.inputCommand.trim());
+        this.addToHistory(this.lastInputCommand);
         
         // 更新状态
         this.isExecuting = true;
@@ -183,7 +311,7 @@
         this.messages = [];
         
         // 添加执行信息
-        this.addMessage('command', `[执行命令] ${this.inputCommand.trim()} (工具: ${this.selectedTool})`);
+        this.addMessage('command', `[执行命令] ${this.lastInputCommand} (工具: ${this.selectedTool})`);
         
         // 构造请求体
         const requestData = {
@@ -216,9 +344,7 @@
                 const data = JSON.parse(event.data);
                 
                 // 处理工具响应
-                if (data.type === 'error') {
-                  this.addMessage('error', data.content);
-                } else if (data.type === 'complete') {
+                if (data.type === 'complete') {
                   // 执行完成
                   this.isExecuting = false;
                   if (data.error) {
@@ -229,7 +355,7 @@
                   // 关闭EventSource
                   this.cleanupEventSource();
                 } else {
-                  this.addMessage(data.type || 'text', data.content);
+                  this.processToolResponse(data);
                 }
               } catch (error) {
                 this.addMessage('error', `[数据解析错误] ${error.message}`);
@@ -251,48 +377,8 @@
         
         // 直接通信模式的执行方法
         executeToolDirect(requestUrl, requestData) {
-        // 创建AbortController用于取消请求
-        const controller = new AbortController();
-        const { signal } = controller;
-        
-        // 存储请求控制器，用于取消功能
-        this.activeRequests.set(this.currentSequenceId, controller);
-        
-        // 发送执行请求到直接通信服务器
-        fetch(requestUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestData),
-          signal: signal,
-          mode: 'cors' // 启用跨域请求
-        })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`HTTP错误: ${response.status}`);
-            }
-            return response.json();
-          })
-          .then(data => {
-            // 处理API响应
-            if (data.success) {
-              this.processToolResponse(data.result);
-            } else {
-              throw new Error(data.error || '工具执行失败');
-            }
-          })
-          .catch(error => {
-            // 不处理AbortError，因为这是用户主动取消的
-            if (error.name !== 'AbortError') {
-              this.addMessage('error', `[执行错误] ${error.message}`);
-            }
-          })
-          .finally(() => {
-            this.isExecuting = false;
-            this.activeRequests.delete(this.currentSequenceId);
-            this.addMessage('info', `[执行结束] 命令执行完成`);
-          });
+          // 使用JSON处理服务执行直接通信模式的请求
+          this.jsonProcessService.executeDirectMode(requestUrl, requestData);
         },
         
         // 备选执行方法（当EventSource不可用时）
@@ -376,11 +462,8 @@
         
         // 处理工具响应
         processToolResponse(response) {
-          if (response.type === 'error') {
-            this.addMessage('error', response.content);
-          } else {
-            this.addMessage(response.type || 'text', response.content);
-          }
+          // 使用JSON处理服务处理工具响应
+          this.jsonProcessService.processToolResponse(response);
         },
         
         // 清空输出
@@ -475,30 +558,8 @@
         
         // 直接通信模式下处理金额数据
         callProcessAmountDirect(amountData) {
-        // 生成唯一序列ID
-        this.currentSequenceId = 'seq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        
-        // 更新状态
-        this.isExecuting = true;
-        this.lastExecutionTime = new Date().toLocaleString();
-        
-        // 清空之前的消息
-        this.messages = [];
-        
-        // 添加执行信息
-        this.addMessage('command', `[执行命令] 直接调用Python处理金额数据`);
-        
-        // 构造请求体
-        const requestData = {
-          amountData: amountData,
-          sequenceId: this.currentSequenceId
-        };
-        
-        // 构造请求URL
-        const requestUrl = `${this.currentApiUrl}/process-amount`;
-        
-        // 发送执行请求到直接通信服务器
-        this.executeToolDirect(requestUrl, requestData);
+          // 使用JSON处理服务处理金额数据
+          this.jsonProcessService.processAmountDataDirect(amountData);
         },
         
         // 为execinfo工具的备选执行方法
